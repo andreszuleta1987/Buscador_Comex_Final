@@ -1,0 +1,12 @@
+# Ignorar la carpeta local de sábanas de datos de Excel pesadas
+archivos_excel/
+*.xlsx
+
+# Ignorar entornos virtuales locales
+venv/
+.venv/
+
+# Ignorar archivos del sistema y de PyCharm
+.idea/
+__pycache__/
+*.pyc
