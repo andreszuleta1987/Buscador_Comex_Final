@@ -1,113 +1,89 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine
 
-# Configuración de rutas y base de datos
 CARPETA_EXCEL = "archivos_excel"
-DB_URI = "postgresql://postgres:Twingopex174@db.pkcfoxntuegjvbhivoid.supabase.co:5432/postgres"
-NOMBRE_TABLA_FINAL = "export_data_final"
+ARCHIVO_SALIDA_CSV = "todo_comex_consolidado.csv"
+
+# Diccionario estricto priorizando las columnas con descripciones de texto de la DIAN
+PALABRAS_CLAVE = {
+    'FECHA_PROCESO': ['fecha_pr', 'fecha_proceso', 'fech_dec', 'periodo'],
+    'SUBPARTIDA': ['subparti', 'subpartida', 'arancel'],
+    'NIT_EXPORTADOR': ['nit_expo', 'nit_exportador'],
+    'RAZON_SOCIAL_EXPORTADOR': ['razon_social_exportador', 'exportador'],
+    'RAZON_SOCIAL_DESTINATARIO': ['razon_social_destinatario', 'razon_social_dest'],
+    'PAIS_DESTINO_FINAL': ['pais_dest', 'pais_destino_final'],  # Buscará el texto largo primero
+    'MODO_TRANSPORTE': ['modo_transporte', 'modo_tr'],  # Obligado a buscar el texto "Marítimo"/"Aéreo"
+    'VALOR_FOB_USD': ['valor_fob_usd', 'valor_fob', 'vlr_fob'],
+    'RAZON_SOCIAL_DECLARANTE': ['razon_social_declarante', 'razon_social_decla']
+}
+
+COLUMNAS_FINALES_DESEADAS = [
+    'FECHA_PROCESO', 'SUBPARTIDA', 'NIT_EXPORTADOR', 'RAZON_SOCIAL_EXPORTADOR',
+    'RAZON_SOCIAL_DESTINATARIO', 'PAIS_DESTINO_FINAL', 'MODO_TRANSPORTE',
+    'VALOR_FOB_USD', 'RAZON_SOCIAL_DECLARANTE'
+]
 
 
-def encontrar_columna_flexible(columnas_excel, palabras_clave):
-    """Busca de forma inteligente una columna que contenga ciertas palabras clave."""
-    for col in columnas_excel:
-        col_normalizada = str(col).strip().upper()
-        # Si todas las palabras clave de la lista están en el nombre de la columna
-        if all(palabra in col_normalizada for palabra in palabras_clave):
-            return col
+def encontrar_columna_exacta_o_flexible(columnas_excel, palabras_clave_buscadas):
+    columnas_limpias = [str(c).lower().strip() for c in columnas_excel]
+
+    # Intento 1: Buscar coincidencia exacta del nombre completo para evitar confundir códigos con textos
+    for palabra in palabras_clave_buscadas:
+        if palabra in columnas_limpias:
+            i = columnas_limpias.index(palabra)
+            return columnas_excel[i]
+
+    # Intento 2: Si no hay exacta, buscar por aproximación (búsqueda flexible)
+    for palabra in palabras_clave_buscadas:
+        for i, col_limpia in enumerate(columnas_limpias):
+            if palabra in col_limpia:
+                return columnas_excel[i]
     return None
 
 
-def consolidar_y_subir():
-    engine = create_engine(DB_URI)
-    primer_archivo = True
-
+def consolidar_localmente():
+    print("⏳ Iniciando consolidación estricta de columnas de texto...")
     if not os.path.exists(CARPETA_EXCEL):
-        print(f"❌ Error: No se encuentra la carpeta '{CARPETA_EXCEL}'.")
+        print(f"❌ La carpeta '{CARPETA_EXCEL}' no existe.")
         return
 
-    archivos = [f for f in os.listdir(CARPETA_EXCEL) if f.endswith('.xlsx')]
-    total_archivos = len(archivos)
+    archivos = [f for f in os.listdir(CARPETA_EXCEL) if f.endswith('.xlsx') and not f.startswith('~$')]
+    if not archivos:
+        print("❌ No hay archivos Excel en la carpeta.")
+        return
 
-    print(f"📂 Se detectaron {total_archivos} archivos para consolidar de forma inteligente.")
-
-    for idx, archivo in enumerate(archivos, start=1):
+    lista_dataframes = []
+    for archivo in archivos:
         ruta_completa = os.path.join(CARPETA_EXCEL, archivo)
-        print(f"\n⏳ [{idx}/{total_archivos}] Analizando estructura de: {archivo}...")
-
         try:
-            # 1. Leer el archivo completo
-            df_completo = pd.read_excel(ruta_completa)
-            columnas_originales = list(df_completo.columns)
+            df_original = pd.read_excel(ruta_completa)
+            df_temporal = pd.DataFrame()
 
-            # 2. Diccionario para mapear de forma flexible tus 7 columnas deseadas
-            # Definimos palabras clave alternativas para cada campo esencial
-            mapeo_detectado = {}
+            for col_final, palabras in PALABRAS_CLAVE.items():
+                col_encontrada = encontrar_columna_exacta_o_flexible(df_original.columns, palabras)
+                if col_encontrada:
+                    df_temporal[col_final] = df_original[col_encontrada]
+                else:
+                    df_temporal[col_final] = ""
 
-            reglas_busqueda = {
-                'fecha_proceso': ['FECHA'],
-                'cod_adu_sal': ['ADU'],
-                'nit_exportador': ['NIT'],
-                'dv_exportador': ['DV'],
-                'razon_social_exportador': ['RAZON', 'SOCIAL'],
-                'cod_pai_des': ['PAI'],
-                'subpartida': ['SUBPARTIDA']
-            }
+            # Limpieza y estandarización de códigos clave
+            if 'SUBPARTIDA' in df_temporal.columns:
+                df_temporal['SUBPARTIDA'] = df_temporal['SUBPARTIDA'].astype(str).str.split('.').str[0].str.strip()
+            if 'NIT_EXPORTADOR' in df_temporal.columns:
+                df_temporal['NIT_EXPORTADOR'] = df_temporal['NIT_EXPORTADOR'].astype(str).str.split('.').str[
+                    0].str.strip()
 
-            # Buscamos cada columna de forma adaptativa
-            for columna_destino, palabras in reglas_busqueda.items():
-                col_origen = encontrar_columna_flexible(columnas_originales, palabras)
-                if col_origen:
-                    mapeo_detectado[col_origen] = columna_destino
-
-            # Validamos que al menos se encuentren las dos columnas críticas para indexar
-            columnas_encontradas = list(mapeo_detectado.values())
-            if 'subpartida' not in columnas_encontradas or 'nit_exportador' not in columnas_encontradas:
-                print(f"⚠️ Advertencia en {archivo}: No se detectó 'SUBPARTIDA' o 'NIT_EXPORTADOR'. Saltando archivo.")
-                print(f"Columnas detectadas en el Excel: {columnas_originales}")
-                continue
-
-            # 3. Renombrar y filtrar solo las columnas que logramos mapear exitosamente
-            df_mes = df_completo[list(mapeo_detectado.keys())].copy()
-            df_mes.rename(columns=mapeo_detectado, inplace=True)
-
-            # 4. Asegurar que existan todas las 7 columnas (si falta alguna menor, la creamos vacía para no romper la tabla)
-            for col_obligatoria in reglas_busqueda.keys():
-                if col_obligatoria not in df_mes.columns:
-                    df_mes[col_obligatoria] = None
-
-            # Reordenar las columnas de forma idéntica siempre para PostgreSQL
-            df_mes = df_mes[list(reglas_busqueda.keys())]
-
-            # 5. Limpieza de registros nulos en datos clave
-            df_mes.dropna(subset=['subpartida', 'nit_exportador'], inplace=True)
-
-            # 6. Formatear la subpartida a 10 caracteres estrictos (con ceros a la izquierda)
-            df_mes['subpartida'] = pd.to_numeric(df_mes['subpartida'], errors='coerce').fillna(0).astype(int)
-            df_mes['subpartida'] = df_mes['subpartida'].astype(str).str.strip().str.zfill(10)
-
-            # 7. Formatear el NIT a número entero
-            df_mes['nit_exportador'] = pd.to_numeric(df_mes['nit_exportador'], errors='coerce').fillna(0).astype(int)
-
-            total_filas = len(df_mes)
-
-            # 8. Carga por lotes (Chunks) a la nube
-            if primer_archivo:
-                print(f"📦 Inicializando tabla limpia '{NOMBRE_TABLA_FINAL}' en Supabase con mapeo flexible...")
-                df_mes.to_sql(NOMBRE_TABLA_FINAL, engine, if_exists='replace', index=False, chunksize=2500)
-                primer_archivo = False
-                print(f"✅ Estructura base creada. {total_filas} registros indexados.")
-            else:
-                print(f"🚀 Acumulando lote de {total_filas} registros en la nube...")
-                df_mes.to_sql(NOMBRE_TABLA_FINAL, engine, if_exists='append', index=False, chunksize=2500)
-                print(f"✅ Datos unificados sin errores.")
-
+            df_temporal = df_temporal[COLUMNAS_FINALES_DESEADAS]
+            lista_dataframes.append(df_temporal)
         except Exception as e:
-            print(f"❌ Error inesperado procesando el archivo {archivo}: {e}")
+            print(f"❌ Error al procesar {archivo}: {e}")
+            continue
 
-    print("\n🎉 ¡PROCESO CONCLUIDO CON ÉXITO!")
-    print(f"Toda tu información histórica está unificada en Supabase sin importar variaciones de nombres.")
+    if lista_dataframes:
+        df_consolidado_total = pd.concat(lista_dataframes, ignore_index=True).dropna(how='all')
+        df_consolidado_total.to_csv(ARCHIVO_SALIDA_CSV, index=False, encoding='utf-8-sig')
+        print(f"🎉 ¡PROCESO COMPLETADO! Se generó '{ARCHIVO_SALIDA_CSV}' con texto real en Transporte y País.")
 
 
 if __name__ == "__main__":
-    consolidar_y_subir()
+    consolidar_localmente()
