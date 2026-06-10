@@ -6,7 +6,7 @@ import re
 # 1. CONFIGURACIÓN DE LA PÁGINA WEB
 st.set_page_config(page_title="Data Comex Pro", layout="wide")
 st.title("🇨🇴 Inteligencia Comercial: Exportaciones Colombianas")
-st.write("Versión 5.7 - Buscador Basado en Columnas Oficiales")
+st.write("Versión 5.8 - Buscador Basado en Columnas Oficiales")
 
 # Credenciales de Conexión
 SUPABASE_URL = "https://pkcfoxntuegjvbhivoid.supabase.co"
@@ -28,18 +28,18 @@ def normalizar_texto(texto):
     return texto
 
 
-# Mapeo de columnas oficiales de la A a la J para la vista del DataFrame
+# Mapeo de columnas corregido a minúsculas según la base de datos real
 COLUMNAS_VISUALES = {
-    "FECHA_PR": "Fecha Proceso",
-    "NIT_EXPORTADOR": "NIT Exportador",
-    "RAZON_SOCIAL_EXPORTADOR": "Cliente Exportador",
-    "RAZON_SOCIAL_DESTINATARIO": "Destinatario Internacional",
-    "PAIS_DESTI": "País Destino",
-    "MODO_TR": "Modo Transporte",
-    "VALOR_FO": "Valor FOB (USD)",
-    "SUBPARTI": "Subpartida Arancelaria",
-    "COD_LUG_": "Puerto / Lugar Salida",
-    "RAZON_SOCIAL_DECLARANTE": "Agencia de Aduanas",
+    "fecha_proceso": "Fecha Proceso",
+    "nit_exportador": "NIT Exportador",
+    "razon_social_exportador": "Cliente Exportador",
+    "razon_social_destinatario": "Destinatario Internacional",
+    "pais_destino_final": "País Destino",
+    "modo_transporte": "Modo Transporte",
+    "valor_fob_usd": "Valor FOB (USD)",
+    "subpartida": "Subpartida Arancelaria",
+    "cod_lug_salida": "Puerto / Lugar Salida",
+    "razon_social_declarante": "Agencia de Aduanas",
     "producto_mapeado": "Producto Mapeado"
 }
 
@@ -98,8 +98,8 @@ if opcion_busqueda == "Buscar por Producto (Texto)":
                     subpartida_seleccionada = seleccion.split(" - ")[0]
                     descripcion_seleccionada = seleccion.split(" - ")[1]
 
-                    # Consulta dirigida a la columna 'SUBPARTI' (se trunca automáticamente en Supabase a 8 letras)
-                    reporte = conn.table(NOMBRE_TABLA).select("*").eq("SUBPARTI", subpartida_seleccionada).execute()
+                    # CONSULTA CORREGIDA A MINÚSCULAS: "subpartida"
+                    reporte = conn.table(NOMBRE_TABLA).select("*").eq("subpartida", subpartida_seleccionada).execute()
 
                     if reporte.data:
                         formatear_y_mostrar_tabla(reporte.data, descripcion_seleccionada)
@@ -119,7 +119,8 @@ elif opcion_busqueda == "Buscar por NIT Empresarial":
         st.info("Consultando registros consolidados en la nube...")
         try:
             nit_busqueda = int(float(str(nit_usuario).strip()))
-            respuesta = conn.table(NOMBRE_TABLA).select("*").eq("NIT_EXPORTADOR", nit_busqueda).execute()
+            # CONSULTA CORREGIDA A MINÚSCULAS: "nit_exportador"
+            respuesta = conn.table(NOMBRE_TABLA).select("*").eq("nit_exportador", nit_busqueda).execute()
 
             if respuesta.data:
                 formatear_y_mostrar_tabla(respuesta.data)
@@ -138,9 +139,9 @@ else:
     if agencia_usuario:
         st.info("Rastreando operaciones asociadas a la agencia...")
         try:
-            termino_agencia = f"%{agencia_usuario.upper().strip()}%"
-            # Consulta directa usando ILIKE sobre la columna RAZON_SOCIAL_DECLARANTE
-            respuesta_agencia = conn.table(NOMBRE_TABLA).select("*").ilike("RAZON_SOCIAL_DECLARANTE",
+            termino_agencia = f"%{agencia_usuario.lower().strip()}%"
+            # CONSULTA CORREGIDA A MINÚSCULAS: "razon_social_declarante"
+            respuesta_agencia = conn.table(NOMBRE_TABLA).select("*").ilike("razon_social_declarante",
                                                                            termino_agencia).execute()
 
             if respuesta_agencia.data:
