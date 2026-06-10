@@ -6,7 +6,7 @@ import re
 # 1. CONFIGURACIÓN DE LA PÁGINA WEB
 st.set_page_config(page_title="Data Comex Pro", layout="wide")
 st.title("🇨🇴 Inteligencia Comercial: Exportaciones Colombianas")
-st.write("Versión 5.6 - Buscador Basado en Columnas Oficiales")
+st.write("Versión 5.7 - Buscador Basado en Columnas Oficiales")
 
 # Credenciales de Conexión
 SUPABASE_URL = "https://pkcfoxntuegjvbhivoid.supabase.co"
@@ -28,11 +28,49 @@ def normalizar_texto(texto):
     return texto
 
 
+# Mapeo de columnas oficiales de la A a la J para la vista del DataFrame
+COLUMNAS_VISUALES = {
+    "FECHA_PR": "Fecha Proceso",
+    "NIT_EXPORTADOR": "NIT Exportador",
+    "RAZON_SOCIAL_EXPORTADOR": "Cliente Exportador",
+    "RAZON_SOCIAL_DESTINATARIO": "Destinatario Internacional",
+    "PAIS_DESTI": "País Destino",
+    "MODO_TR": "Modo Transporte",
+    "VALOR_FO": "Valor FOB (USD)",
+    "SUBPARTI": "Subpartida Arancelaria",
+    "COD_LUG_": "Puerto / Lugar Salida",
+    "RAZON_SOCIAL_DECLARANTE": "Agencia de Aduanas",
+    "producto_mapeado": "Producto Mapeado"
+}
+
+
+def formatear_y_mostrar_tabla(datos, desc_producto=None):
+    """Función auxiliar para limpiar, ordenar y mostrar las columnas A-J"""
+    df = pd.DataFrame(datos)
+
+    # Si viene la descripción del producto, la agregamos
+    if desc_producto:
+        df['producto_mapeado'] = desc_producto
+
+    # Filtrar solo las columnas que existan en el diccionario de mapeo
+    columnas_existentes = [col for col in COLUMNAS_VISUALES.keys() if col in df.columns]
+    df_filtrado = df[columnas_existentes].copy()
+
+    # Renombrar columnas para la vista del usuario
+    df_filtrado = df_filtrado.rename(columns=COLUMNAS_VISUALES)
+
+    st.balloons()
+    st.success(f"📊 ¡Reporte Comercial Generado! {len(df_filtrado)} operaciones halladas.")
+    st.dataframe(df_filtrado, use_container_width=True)
+
+
 # --- SECCIÓN PRINCIPAL: BUSCADOR ---
 st.subheader("🔍 Buscador Comercial Inteligente")
 opcion_busqueda = st.radio("Selecciona el método de consulta:",
-                           ("Buscar por Producto (Texto)", "Buscar por NIT Empresarial"), horizontal=True)
+                           ("Buscar por Producto (Texto)", "Buscar por NIT Empresarial",
+                            "Buscar por Agencia de Aduanas"), horizontal=True)
 
+# 1. BÚSQUEDA POR PRODUCTO
 if opcion_busqueda == "Buscar por Producto (Texto)":
     producto_usuario = st.text_input("Escribe el nombre del producto o variedad a buscar:",
                                      placeholder="Ej: hass, cocos, banano")
@@ -60,16 +98,11 @@ if opcion_busqueda == "Buscar por Producto (Texto)":
                     subpartida_seleccionada = seleccion.split(" - ")[0]
                     descripcion_seleccionada = seleccion.split(" - ")[1]
 
-                    # Consulta dirigida a la columna 'subpartida'
-                    reporte = conn.table(NOMBRE_TABLA).select("*").eq("subpartida", subpartida_seleccionada).execute()
+                    # Consulta dirigida a la columna 'SUBPARTI' (se trunca automáticamente en Supabase a 8 letras)
+                    reporte = conn.table(NOMBRE_TABLA).select("*").eq("SUBPARTI", subpartida_seleccionada).execute()
 
                     if reporte.data:
-                        df_reporte = pd.DataFrame(reporte.data)
-                        df_reporte['producto_mapeado'] = descripcion_seleccionada
-
-                        st.balloons()
-                        st.success(f"📊 ¡Reporte Comercial Generado! {len(df_reporte)} operaciones halladas.")
-                        st.dataframe(df_reporte, use_container_width=True)
+                        formatear_y_mostrar_tabla(reporte.data, descripcion_seleccionada)
                     else:
                         st.warning(
                             f"La subpartida {subpartida_seleccionada} ({descripcion_seleccionada}) no registra transacciones en el histórico cargado.")
@@ -78,33 +111,42 @@ if opcion_busqueda == "Buscar por Producto (Texto)":
         except Exception as e:
             st.error(f"Error en la consulta de productos: {e}")
 
-else:
+# 2. BÚSQUEDA POR NIT
+elif opcion_busqueda == "Buscar por NIT Empresarial":
     nit_usuario = st.text_input("Introduce el NIT empresarial a consultar:", placeholder="Ej: 900549654")
 
     if nit_usuario:
         st.info("Consultando registros consolidados en la nube...")
         try:
             nit_busqueda = int(float(str(nit_usuario).strip()))
-            # Consulta dirigida a la columna 'nit_exportador'
-            respuesta = conn.table(NOMBRE_TABLA).select("*").eq("nit_exportador", nit_busqueda).execute()
+            respuesta = conn.table(NOMBRE_TABLA).select("*").eq("NIT_EXPORTADOR", nit_busqueda).execute()
 
             if respuesta.data:
-                df_res = pd.DataFrame(respuesta.data)
-
-                try:
-                    codigos_presentes = df_res['subpartida'].tolist()
-                    prod_data = conn.table("productos").select("subpartida, descripcion_producto").in_("subpartida",
-                                                                                                       codigos_presentes).execute()
-                    if prod_data.data:
-                        df_res = pd.merge(df_res, pd.DataFrame(prod_data.data), on='subpartida', how='left')
-                except:
-                    pass
-
-                st.success(f"📊 ¡Datos encontrados! Se recuperaron {len(df_res)} operaciones aduaneras históricas.")
-                st.dataframe(df_res, use_container_width=True)
+                formatear_y_mostrar_tabla(respuesta.data)
             else:
                 st.warning(f"No hay registros en la nube para el NIT {nit_busqueda}.")
         except ValueError:
             st.error("Por favor ingresa un número de NIT válido sin puntos, comas ni letras.")
         except Exception as e:
             st.error(f"Error en la consulta por NIT: {e}")
+
+# 3. BÚSQUEDA POR AGENCIA DE ADUANAS
+else:
+    agencia_usuario = st.text_input("Escribe el nombre de la Agencia de Aduanas a buscar:",
+                                    placeholder="Ej: Fedegal, Elite, Agencome")
+
+    if agencia_usuario:
+        st.info("Rastreando operaciones asociadas a la agencia...")
+        try:
+            termino_agencia = f"%{agencia_usuario.upper().strip()}%"
+            # Consulta directa usando ILIKE sobre la columna RAZON_SOCIAL_DECLARANTE
+            respuesta_agencia = conn.table(NOMBRE_TABLA).select("*").ilike("RAZON_SOCIAL_DECLARANTE",
+                                                                           termino_agencia).execute()
+
+            if respuesta_agencia.data:
+                formatear_y_mostrar_tabla(respuesta_agencia.data)
+            else:
+                st.warning(
+                    f"No se encontraron operaciones registradas para la agencia o declarante '{agencia_usuario}'.")
+        except Exception as e:
+            st.error(f"Error en la consulta por Agencia de Aduanas: {e}")
