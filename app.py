@@ -1,20 +1,29 @@
 import streamlit as st
 import pandas as pd
+import io
 
 st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 
 @st.cache_data
 def cargar_datos():
-    # Usamos errors='replace' para que no se bloquee ante caracteres extraños
-    # Probaremos con 'latin-1' que suele ser el más compatible con archivos de Excel en español
-    df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1', errors='replace')
+    # Función para leer el archivo ignorando errores de codificación
+    def leer_csv_robusto(archivo):
+        with open(archivo, 'rb') as f:
+            contenido = f.read().decode('latin-1', errors='ignore')
+        return pd.read_csv(io.StringIO(contenido))
+
+    # 1. Cargar archivo principal
+    df = leer_csv_robusto("todo_comex_consolidado.csv")
     df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
 
-    # Igual para el arancel
-    arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1', sep=';', errors='replace')
+    # 2. Cargar archivo arancel (usando sep=';')
+    # Como ya decodificamos el texto, leemos el buffer
+    with open("arancel_convertido.csv", 'rb') as f:
+        contenido_arancel = f.read().decode('latin-1', errors='ignore')
+    arancel = pd.read_csv(io.StringIO(contenido_arancel), sep=';')
 
-    # Normalización de nombres de columnas por si acaso
+    # Limpieza básica
     df.columns = df.columns.str.strip()
     arancel.columns = arancel.columns.str.strip()
 
@@ -46,11 +55,11 @@ try:
 
     df_filtrado = df.copy()
 
+    # Aplicación de filtros
     if empresa:
         df_filtrado = df_filtrado[
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(empresa, case=False, na=False)]
     if descripcion:
-        # Usamos 'replace' también en la búsqueda para evitar problemas con tildes
         df_filtrado = df_filtrado[
             df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(descripcion, case=False, na=False)]
     if nit:
