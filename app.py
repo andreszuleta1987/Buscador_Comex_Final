@@ -6,10 +6,12 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 @st.cache_data
 def cargar_datos():
-    df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
+    # Cambiamos encoding de 'latin-1' a 'utf-8'
+    df = pd.read_csv("todo_comex_consolidado.csv", encoding='utf-8')
     df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
 
-    arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1', sep=';')
+    # También cambiamos a 'utf-8' aquí
+    arancel = pd.read_csv("arancel_convertido.csv", encoding='utf-8', sep=';')
 
     df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
     arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
