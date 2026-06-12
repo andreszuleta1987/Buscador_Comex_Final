@@ -6,10 +6,7 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 @st.cache_data
 def cargar_datos_locales():
-    # Usamos 'latin-1' porque es el estándar que mejor lee tus archivos de Excel
     df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
-
-    # Limpiamos el nombre de la columna que vimos en el diagnóstico
     df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
     return df
 
@@ -27,6 +24,7 @@ try:
 
     df_filtrado = df.copy()
 
+    # Filtros
     if buscar_empresa:
         df_filtrado = df_filtrado[
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False, na=False)]
@@ -35,8 +33,12 @@ try:
         df_filtrado = df_filtrado[
             df_filtrado['SUBPARTIDA'].astype(str).str.contains(buscar_texto, case=False, na=False)]
 
-    st.write(f"Resultados: {len(df_filtrado)}")
-    st.dataframe(df_filtrado, use_container_width=True)
+    # SOLUCIÓN: Solo mostrar tabla si se ha aplicado algún filtro
+    if buscar_empresa or buscar_texto:
+        st.write(f"Resultados: {len(df_filtrado)}")
+        st.dataframe(df_filtrado, use_container_width=True)
+    else:
+        st.info("Escribe en los filtros para ver los resultados.")
 
 except Exception as e:
     st.error(f"Error al cargar datos: {e}")
