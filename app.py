@@ -15,34 +15,29 @@ supabase = init_supabase()
 
 @st.cache_data(ttl=3600)
 def cargar_datos():
-    # Carga básica
+    # Cargamos SOLAMENTE la tabla principal que sí existe
     res_comex = supabase.table("todo_comex_consolidado").select("*").execute()
-    res_arancel = supabase.table("arancel_convertido").select("*").execute()
-
     df_comex = pd.DataFrame(res_comex.data)
-    df_arancel = pd.DataFrame(res_arancel.data)
-
-    # Merge directo (asumiendo que las columnas se llaman igual)
-    df_final = pd.merge(df_comex, df_arancel, on='SUBPARTIDA', how='left')
-    return df_final
+    return df_comex
 
 
 st.title("🔎 Buscador Comex — Modo Validación")
 
 try:
-    df_final = cargar_datos()
+    df_comex = cargar_datos()
 
-    # Filtro básico y sencillo
+    # Filtro sencillo
     buscar_empresa = st.text_input("Filtrar por Empresa:")
 
-    df_filtrado = df_final.copy()
+    df_filtrado = df_comex.copy()
 
     if buscar_empresa:
-        # Filtro simple: convierte a string y busca, ignorando mayúsculas
-        df_filtrado = df_final[df_final['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False)]
+        # Filtro básico
+        mask = df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False, na=False)
+        df_filtrado = df_filtrado[mask]
 
     st.write(f"Resultados encontrados: {len(df_filtrado)}")
     st.dataframe(df_filtrado, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Error al cargar la base de datos: {e}")
