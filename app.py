@@ -6,19 +6,19 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 @st.cache_data
 def cargar_datos():
-    # 1. Cargar datos principales
+    # Cargar datos principales
     df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
     df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
 
-    # 2. Cargar archivo de descripciones
+    # Cargar archivo de descripciones
     arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1')
 
-    # 3. Cruzar ambos dataframes por la columna SUBPARTIDA
-    # Aseguramos que ambas columnas sean tipo string para que el merge funcione
+    # Asegurar que las columnas de unión sean strings
     df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
-    arancel['Subpartida'] = arancel['Subpartida'].astype(str)
+    arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
 
-    df_final = pd.merge(df, arancel, left_on='SUBPARTIDA', right_on='Subpartida', how='left')
+    # Unir archivos
+    df_final = pd.merge(df, arancel, on='SUBPARTIDA', how='left')
     return df_final
 
 
@@ -31,7 +31,7 @@ try:
     with col1:
         buscar_empresa = st.text_input("Filtrar por Empresa:")
     with col2:
-        # Nuevo filtro para descripciones
+        # Usamos el nombre de columna correcto: DESCRIPCION_SUBPARTIDA
         buscar_descripcion = st.text_input("Buscar por nombre (ej: Hass, Aguacate):")
 
     df_filtrado = df.copy()
@@ -41,9 +41,9 @@ try:
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False, na=False)]
 
     if buscar_descripcion:
-        # Filtra sobre la columna 'Descripción' que viene del archivo arancel_convertido.csv
+        # Filtramos por la columna exacta del CSV
         df_filtrado = df_filtrado[
-            df_filtrado['Descripción'].astype(str).str.contains(buscar_descripcion, case=False, na=False)]
+            df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(buscar_descripcion, case=False, na=False)]
 
     if buscar_empresa or buscar_descripcion:
         st.write(f"Resultados: {len(df_filtrado)}")
