@@ -29,31 +29,30 @@ with st.expander("⚙️ Filtros Avanzados"):
     with c3:
         agencia = st.text_input("Agencia de Aduanas:")
 
-# Lógica de búsqueda en Supabase
+# Lógica de búsqueda mejorada para evitar timeout
 if empresa or descripcion or nit or subpartida or agencia:
     try:
         # Iniciar la consulta
         query = supabase.table("todo_comex_consolidado").select("*")
 
-        # Aplicar filtros dinámicos
+        # Aplicar filtros
         if empresa: query = query.ilike("RAZON_SOCIAL_EXPORTADOR", f"%{empresa}%")
         if descripcion: query = query.ilike("DESCRIPCION_SUBPARTIDA", f"%{descripcion}%")
         if nit: query = query.ilike("NIT_EXPORTADOR", f"%{nit}%")
         if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-        # Ejecutar consulta limitada a 1000 registros para evitar errores de memoria
-        response = query.limit(1000).execute()
+        # IMPORTANTE: Limitamos a 500 registros para que Supabase responda rápido
+        # y no cancele la consulta por tiempo agotado.
+        response = query.limit(500).execute()
         data = response.data
 
         if data:
             df = pd.DataFrame(data)
-            st.write(f"Resultados encontrados: {len(df)}")
+            st.write(f"Resultados encontrados (mostrando hasta 500): {len(df)}")
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning("No se encontraron resultados con los filtros actuales.")
+            st.warning("No se encontraron resultados.")
 
     except Exception as e:
-        st.error(f"Error al consultar la base de datos: {e}")
-else:
-    st.info("Escribe en cualquiera de los filtros para buscar.")
+        st.error(f"Error de consulta: {e}")
