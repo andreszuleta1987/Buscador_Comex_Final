@@ -6,12 +6,17 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 @st.cache_data
 def cargar_datos():
-    # Cambiamos encoding de 'latin-1' a 'cp1252'
-    df = pd.read_csv("todo_comex_consolidado.csv", encoding='cp1252')
+    # Usamos errors='replace' para que no se bloquee ante caracteres extraños
+    # Probaremos con 'latin-1' que suele ser el más compatible con archivos de Excel en español
+    df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1', errors='replace')
     df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
 
-    # También cambiamos a 'cp1252' aquí
-    arancel = pd.read_csv("arancel_convertido.csv", encoding='cp1252', sep=';')
+    # Igual para el arancel
+    arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1', sep=';', errors='replace')
+
+    # Normalización de nombres de columnas por si acaso
+    df.columns = df.columns.str.strip()
+    arancel.columns = arancel.columns.str.strip()
 
     df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
     arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
@@ -24,14 +29,12 @@ st.title("🔎 Buscador Comex")
 try:
     df = cargar_datos()
 
-    # Filtros principales siempre visibles
     col1, col2 = st.columns(2)
     with col1:
         empresa = st.text_input("Filtrar por Empresa (Exportador):")
     with col2:
         descripcion = st.text_input("Buscar por Nombre de producto:")
 
-    # Filtros avanzados en un expansor
     with st.expander("⚙️ Filtros Avanzados"):
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -43,11 +46,11 @@ try:
 
     df_filtrado = df.copy()
 
-    # Aplicación de filtros
     if empresa:
         df_filtrado = df_filtrado[
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(empresa, case=False, na=False)]
     if descripcion:
+        # Usamos 'replace' también en la búsqueda para evitar problemas con tildes
         df_filtrado = df_filtrado[
             df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(descripcion, case=False, na=False)]
     if nit:
@@ -65,4 +68,4 @@ try:
         st.info("Escribe en cualquiera de los filtros para buscar.")
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Error técnico: {e}")
