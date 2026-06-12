@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-# Configuración de Streamlit
+# Configuración de la página
 st.set_page_config(page_title="Buscador Comex Web", layout="wide")
 
-# Conexión a Supabase usando los secretos guardados en Streamlit Cloud
+# Conexión a Supabase
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
@@ -29,30 +29,31 @@ with st.expander("⚙️ Filtros Avanzados"):
     with c3:
         agencia = st.text_input("Agencia de Aduanas:")
 
-# Lógica de búsqueda mejorada para evitar timeout
+# Lógica de búsqueda
 if empresa or descripcion or nit or subpartida or agencia:
     try:
-        # Iniciar la consulta
-        query = supabase.table("todo_comex_consolidado").select("*")
+        # Usamos la vista 'vista_comex' que creamos en Supabase
+        query = supabase.table("vista_comex").select("*")
 
-        # Aplicar filtros
+        # Aplicar filtros dinámicos
         if empresa: query = query.ilike("RAZON_SOCIAL_EXPORTADOR", f"%{empresa}%")
         if descripcion: query = query.ilike("DESCRIPCION_SUBPARTIDA", f"%{descripcion}%")
         if nit: query = query.ilike("NIT_EXPORTADOR", f"%{nit}%")
         if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-        # IMPORTANTE: Limitamos a 500 registros para que Supabase responda rápido
-        # y no cancele la consulta por tiempo agotado.
-        response = query.limit(500).execute()
+        # Ejecutar consulta limitada a 200 registros para mayor velocidad
+        response = query.limit(200).execute()
         data = response.data
 
         if data:
             df = pd.DataFrame(data)
-            st.write(f"Resultados encontrados (mostrando hasta 500): {len(df)}")
+            st.write(f"Resultados encontrados: {len(df)}")
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning("No se encontraron resultados.")
+            st.warning("No se encontraron resultados con los filtros actuales.")
 
     except Exception as e:
-        st.error(f"Error de consulta: {e}")
+        st.error(f"Error al consultar la base de datos: {e}")
+else:
+    st.info("Escribe en cualquiera de los filtros para buscar.")
