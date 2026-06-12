@@ -32,8 +32,8 @@ with st.expander("⚙️ Filtros Avanzados"):
 # Lógica de búsqueda
 if empresa or descripcion or nit or subpartida or agencia:
     try:
-        # Usamos la vista 'vista_comex' que creamos en Supabase
-        query = supabase.table("vista_comex").select("*")
+        # CAMBIO AQUÍ: Ahora consultamos directamente la tabla consolidada
+        query = supabase.table("todo_comex_consolidado").select("*")
 
         # Aplicar filtros dinámicos
         if empresa: query = query.ilike("RAZON_SOCIAL_EXPORTADOR", f"%{empresa}%")
@@ -42,7 +42,7 @@ if empresa or descripcion or nit or subpartida or agencia:
         if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-        # Ejecutar consulta limitada a 200 registros para mayor velocidad
+        # Ejecutar consulta limitada a 200 registros
         response = query.limit(200).execute()
         data = response.data
 
