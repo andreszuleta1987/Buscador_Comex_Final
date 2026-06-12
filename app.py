@@ -1,60 +1,59 @@
 import streamlit as st
 import pandas as pd
+from supabase import create_client
 
-st.set_page_config(page_title="Buscador Comex", layout="wide")
+# Configuración de Streamlit
+st.set_page_config(page_title="Buscador Comex Web", layout="wide")
 
+# Conexión a Supabase usando los secretos guardados en Streamlit Cloud
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase = create_client(url, key)
 
-# Cargamos el archivo que ya tiene todo unido (más rápido y sin errores)
-@st.cache_data
-def cargar_datos():
-    # Usamos on_bad_lines='skip' para que ignore filas con errores
-    # Usamos engine='python' para que sea más tolerante a formatos de Excel
-    df = pd.read_csv("datos_finales.csv", encoding='latin-1', on_bad_lines='skip', engine='python')
-    return df
+st.title("🔎 Buscador Comex Web")
 
+# Filtros principales
+col1, col2 = st.columns(2)
+with col1:
+    empresa = st.text_input("Filtrar por Empresa (Exportador):")
+with col2:
+    descripcion = st.text_input("Buscar por Nombre de producto:")
 
-st.title("🔎 Buscador Comex")
+# Filtros avanzados
+with st.expander("⚙️ Filtros Avanzados"):
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        nit = st.text_input("NIT Exportador:")
+    with c2:
+        subpartida = st.text_input("Subpartida numérica:")
+    with c3:
+        agencia = st.text_input("Agencia de Aduanas:")
 
-try:
-    df = cargar_datos()
+# Lógica de búsqueda en Supabase
+if empresa or descripcion or nit or subpartida or agencia:
+    try:
+        # Iniciar la consulta
+        query = supabase.table("todo_comex_consolidado").select("*")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        empresa = st.text_input("Filtrar por Empresa (Exportador):")
-    with col2:
-        producto = st.text_input("Buscar por Nombre de producto:")
+        # Aplicar filtros dinámicos
+        if empresa: query = query.ilike("RAZON_SOCIAL_EXPORTADOR", f"%{empresa}%")
+        if descripcion: query = query.ilike("DESCRIPCION_SUBPARTIDA", f"%{descripcion}%")
+        if nit: query = query.ilike("NIT_EXPORTADOR", f"%{nit}%")
+        if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
+        if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-    with st.expander("⚙️ Filtros Avanzados"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            nit = st.text_input("NIT Exportador:")
-        with c2:
-            subpartida = st.text_input("Subpartida numérica:")
-        with c3:
-            agencia = st.text_input("Agencia de Aduanas:")
+        # Ejecutar consulta limitada a 1000 registros para evitar errores de memoria
+        response = query.limit(1000).execute()
+        data = response.data
 
-    df_filtrado = df.copy()
+        if data:
+            df = pd.DataFrame(data)
+            st.write(f"Resultados encontrados: {len(df)}")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No se encontraron resultados con los filtros actuales.")
 
-    # Filtros
-    if empresa:
-        df_filtrado = df_filtrado[
-            df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(empresa, case=False, na=False)]
-    if producto:
-        df_filtrado = df_filtrado[
-            df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(producto, case=False, na=False)]
-    if nit:
-        df_filtrado = df_filtrado[df_filtrado['NIT_EXPORTADOR'].astype(str).str.contains(nit, case=False, na=False)]
-    if subpartida:
-        df_filtrado = df_filtrado[df_filtrado['SUBPARTIDA'].astype(str).str.contains(subpartida, case=False, na=False)]
-    if agencia:
-        df_filtrado = df_filtrado[
-            df_filtrado['RAZON_SOCIAL_DECLARANTE'].astype(str).str.contains(agencia, case=False, na=False)]
-
-    if empresa or producto or nit or subpartida or agencia:
-        st.write(f"Resultados encontrados: {len(df_filtrado)}")
-        st.dataframe(df_filtrado, use_container_width=True)
-    else:
-        st.info("Escribe en cualquiera de los filtros para comenzar la búsqueda.")
-
-except Exception as e:
-    st.error(f"Error cargando los datos: {e}")
+    except Exception as e:
+        st.error(f"Error al consultar la base de datos: {e}")
+else:
+    st.info("Escribe en cualquiera de los filtros para buscar.")
