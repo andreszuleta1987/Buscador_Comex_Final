@@ -1,92 +1,48 @@
 import streamlit as st
 import pandas as pd
+from supabase import create_client
 
-st.set_page_config(page_title="Buscador Comex Local", layout="wide")
-
-
-@st.cache_data
-def cargar_datos_base():
-    # Lee el nuevo CSV consolidado con textos reales
-    df = pd.read_csv("todo_comex_consolidado.csv", dtype={'SUBPARTIDA': str, 'NIT_EXPORTADOR': str})
-    df['RAZON_SOCIAL_DECLARANTE'] = df['RAZON_SOCIAL_DECLARANTE'].fillna("")
-    df['RAZON_SOCIAL_EXPORTADOR'] = df['RAZON_SOCIAL_EXPORTADOR'].fillna("")
-    df['PAIS_DESTINO_FINAL'] = df['PAIS_DESTINO_FINAL'].fillna("")
-    df['MODO_TRANSPORTE'] = df['MODO_TRANSPORTE'].fillna("")
-    df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str).str.strip()
-    return df
+st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 
-@st.cache_data
-def cargar_maestro_arancel():
-    try:
-        df_m = pd.read_excel("arancel_convertido.xlsx", header=None, usecols=[0, 1])
-        df_m.columns = ['SUBPARTIDA', 'DESCRIPCION_SUBPARTIDA']
-        df_m['SUBPARTIDA'] = df_m['SUBPARTIDA'].astype(str).str.split('.').str[0].str.strip()
-        df_m['DESCRIPCION_SUBPARTIDA'] = df_m['DESCRIPCION_SUBPARTIDA'].fillna("").astype(str)
-        return df_m
-    except Exception as e:
-        st.error(f"Error al cargar arancel_convertido.xlsx: {e}")
-        return pd.DataFrame(columns=['SUBPARTIDA', 'DESCRIPCION_SUBPARTIDA'])
+@st.cache_resource
+def init_supabase():
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 
-st.title("🔎 Buscador Comex — Modo Validación Local")
+supabase = init_supabase()
+
+
+@st.cache_data(ttl=3600)
+def cargar_datos():
+    # Carga básica
+    res_comex = supabase.table("todo_comex_consolidado").select("*").execute()
+    res_arancel = supabase.table("arancel_convertido").select("*").execute()
+
+    df_comex = pd.DataFrame(res_comex.data)
+    df_arancel = pd.DataFrame(res_arancel.data)
+
+    # Merge directo (asumiendo que las columnas se llaman igual)
+    df_final = pd.merge(df_comex, df_arancel, on='SUBPARTIDA', how='left')
+    return df_final
+
+
+st.title("🔎 Buscador Comex — Modo Validación")
 
 try:
-    df_comex = cargar_datos_base()
-    df_arancel = cargar_maestro_arancel()
+    df_final = cargar_datos()
 
-    st.success(f"✅ ¡Base de datos local conectada! Registros: {len(df_comex):,}")
+    # Filtro básico y sencillo
+    buscar_empresa = st.text_input("Filtrar por Empresa:")
 
-    # --- LOS DOS FILTROS INTELIGENTES ---
-    st.markdown("### Filtros de Búsqueda")
-    col1, col2 = st.columns(2)
+    df_filtrado = df_final.copy()
 
-    with col1:
-        buscar_empresa = st.text_input("Filtrar por Empresa / Agencia de Aduanas:")
-    with col2:
-        buscar_subpartida_o_texto = st.text_input("Filtrar por Subpartida Arancelaria o Palabra (ej: hass, aguacate):")
-
-    df_filtrado = df_comex.copy()
-
-    # 1. Filtro por Empresa / Agencia
     if buscar_empresa:
-        condicion_agencia = df_filtrado['RAZON_SOCIAL_DECLARANTE'].str.contains(buscar_empresa, case=False, na=False)
-        condicion_exportador = df_filtrado['RAZON_SOCIAL_EXPORTADOR'].str.contains(buscar_empresa, case=False, na=False)
-        df_filtrado = df_filtrado[condicion_agencia | condicion_exportador]
+        # Filtro simple: convierte a string y busca, ignorando mayúsculas
+        df_filtrado = df_final[df_final['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False)]
 
-    # 2. Filtro por Subpartida / Texto
-    if buscar_subpartida_o_texto:
-        if buscar_subpartida_o_texto.isdigit():
-            df_filtrado = df_filtrado[df_filtrado['SUBPARTIDA'].str.startswith(buscar_subpartida_o_texto)]
-        else:
-            codigos_coincidentes = df_arancel[
-                df_arancel['DESCRIPCION_SUBPARTIDA'].str.contains(buscar_subpartida_o_texto, case=False, na=False)][
-                'SUBPARTIDA'].unique()
-            df_filtrado = df_filtrado[df_filtrado['SUBPARTIDA'].isin(codigos_coincidentes)]
+    st.write(f"Resultados encontrados: {len(df_filtrado)}")
+    st.dataframe(df_filtrado, use_container_width=True)
 
-    # Inyección de la descripción arancelaria en caliente
-    df_filtrado = pd.merge(df_filtrado, df_arancel, on='SUBPARTIDA', how='left')
-    df_filtrado['DESCRIPCION_SUBPARTIDA'] = df_filtrado['DESCRIPCION_SUBPARTIDA'].fillna("SIN DESCRIPCION")
-
-    # ORDEN EXACTO SOLICITADO POR EL USUARIO
-    COLUMNAS_ORDENADAS_VISIBLES = [
-        'FECHA_PROCESO',
-        'SUBPARTIDA',
-        'DESCRIPCION_SUBPARTIDA',  # Tercera posición
-        'NIT_EXPORTADOR',
-        'RAZON_SOCIAL_EXPORTADOR',
-        'RAZON_SOCIAL_DESTINATARIO',
-        'PAIS_DESTINO_FINAL',
-        'MODO_TRANSPORTE',
-        'VALOR_FOB_USD',
-        'RAZON_SOCIAL_DECLARANTE'
-    ]
-
-    columnas_validas = [col for col in COLUMNAS_ORDENADAS_VISIBLES if col in df_filtrado.columns]
-    df_vista_final = df_filtrado[columnas_validas]
-
-    st.markdown(f"📊 **Resultados encontrados: {len(df_vista_final):,}**")
-    st.dataframe(df_vista_final.head(50), use_container_width=True)
-
-except FileNotFoundError:
-    st.error("❌ Archivos base no encontrados.")
+except Exception as e:
+    st.error(f"Error: {e}")
