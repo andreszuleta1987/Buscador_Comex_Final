@@ -1,20 +1,54 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Diagnóstico", layout="wide")
+st.set_page_config(page_title="Buscador Comex", layout="wide")
 
-st.title("🔎 Diagnóstico de Archivos")
+
+@st.cache_data
+def cargar_datos():
+    # 1. Cargar archivo principal
+    df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
+    # Limpiar primera columna de caracteres ocultos
+    df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
+
+    # 2. Cargar archivo arancel con sep=';'
+    arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1', sep=';')
+
+    # 3. Asegurar que las columnas de unión existan y sean strings
+    df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
+    arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
+
+    # 4. Unir
+    df_final = pd.merge(df, arancel, on='SUBPARTIDA', how='left')
+    return df_final
+
+
+st.title("🔎 Buscador Comex")
 
 try:
-    # 1. Cargar principales
-    df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
-    st.write("### Columnas en 'todo_comex_consolidado':")
-    st.write(df.columns.tolist())
+    df = cargar_datos()
 
-    # 2. Cargar arancel
-    arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1')
-    st.write("### Columnas en 'arancel_convertido':")
-    st.write(arancel.columns.tolist())
+    col1, col2 = st.columns(2)
+    with col1:
+        buscar_empresa = st.text_input("Filtrar por Empresa:")
+    with col2:
+        buscar_descripcion = st.text_input("Buscar por nombre (ej: Hass, Aguacate):")
+
+    df_filtrado = df.copy()
+
+    if buscar_empresa:
+        df_filtrado = df_filtrado[
+            df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False, na=False)]
+
+    if buscar_descripcion:
+        df_filtrado = df_filtrado[
+            df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(buscar_descripcion, case=False, na=False)]
+
+    if buscar_empresa or buscar_descripcion:
+        st.write(f"Resultados: {len(df_filtrado)}")
+        st.dataframe(df_filtrado, use_container_width=True)
+    else:
+        st.info("Escribe en los filtros para ver los resultados.")
 
 except Exception as e:
-    st.error(f"Error al leer archivos: {e}")
+    st.error(f"Error: {e}")
