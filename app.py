@@ -1,36 +1,15 @@
 import streamlit as st
 import pandas as pd
-import io
 
 st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 
+# Cargamos el archivo que ya tiene todo unido (más rápido y sin errores)
 @st.cache_data
 def cargar_datos():
-    # Función para leer el archivo ignorando errores de codificación
-    def leer_csv_robusto(archivo):
-        with open(archivo, 'rb') as f:
-            contenido = f.read().decode('latin-1', errors='ignore')
-        return pd.read_csv(io.StringIO(contenido))
-
-    # 1. Cargar archivo principal
-    df = leer_csv_robusto("todo_comex_consolidado.csv")
-    df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
-
-    # 2. Cargar archivo arancel (usando sep=';')
-    # Como ya decodificamos el texto, leemos el buffer
-    with open("arancel_convertido.csv", 'rb') as f:
-        contenido_arancel = f.read().decode('latin-1', errors='ignore')
-    arancel = pd.read_csv(io.StringIO(contenido_arancel), sep=';')
-
-    # Limpieza básica
-    df.columns = df.columns.str.strip()
-    arancel.columns = arancel.columns.str.strip()
-
-    df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
-    arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
-
-    return pd.merge(df, arancel, on='SUBPARTIDA', how='left')
+    # Usamos sep=',' porque al guardar como CSV en Excel, esa es la norma
+    df = pd.read_csv("datos_finales.csv", encoding='latin-1')
+    return df
 
 
 st.title("🔎 Buscador Comex")
@@ -42,7 +21,7 @@ try:
     with col1:
         empresa = st.text_input("Filtrar por Empresa (Exportador):")
     with col2:
-        descripcion = st.text_input("Buscar por Nombre de producto:")
+        producto = st.text_input("Buscar por Nombre de producto:")
 
     with st.expander("⚙️ Filtros Avanzados"):
         c1, c2, c3 = st.columns(3)
@@ -55,13 +34,13 @@ try:
 
     df_filtrado = df.copy()
 
-    # Aplicación de filtros
+    # Filtros
     if empresa:
         df_filtrado = df_filtrado[
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(empresa, case=False, na=False)]
-    if descripcion:
+    if producto:
         df_filtrado = df_filtrado[
-            df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(descripcion, case=False, na=False)]
+            df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(producto, case=False, na=False)]
     if nit:
         df_filtrado = df_filtrado[df_filtrado['NIT_EXPORTADOR'].astype(str).str.contains(nit, case=False, na=False)]
     if subpartida:
@@ -70,11 +49,11 @@ try:
         df_filtrado = df_filtrado[
             df_filtrado['RAZON_SOCIAL_DECLARANTE'].astype(str).str.contains(agencia, case=False, na=False)]
 
-    if empresa or descripcion or nit or subpartida or agencia:
-        st.write(f"Resultados: {len(df_filtrado)}")
+    if empresa or producto or nit or subpartida or agencia:
+        st.write(f"Resultados encontrados: {len(df_filtrado)}")
         st.dataframe(df_filtrado, use_container_width=True)
     else:
-        st.info("Escribe en cualquiera de los filtros para buscar.")
+        st.info("Escribe en cualquiera de los filtros para comenzar la búsqueda.")
 
 except Exception as e:
-    st.error(f"Error técnico: {e}")
+    st.error(f"Error cargando los datos: {e}")
