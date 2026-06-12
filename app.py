@@ -6,14 +6,17 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 
 @st.cache_data
 def cargar_datos():
-    # Cargar datos principales
+    # Cargar y limpiar columnas principales
     df = pd.read_csv("todo_comex_consolidado.csv", encoding='latin-1')
-    df = df.rename(columns={df.columns[0]: "FECHA_PROCESO"})
+    df.columns = df.columns.str.replace('ï»¿', '')  # Limpia caracteres ocultos
+    df.columns = df.columns.str.strip()  # Quita espacios extra
 
-    # Cargar archivo de descripciones
+    # Cargar y limpiar columnas arancel
     arancel = pd.read_csv("arancel_convertido.csv", encoding='latin-1')
+    arancel.columns = arancel.columns.str.replace('ï»¿', '')
+    arancel.columns = arancel.columns.str.strip()
 
-    # Asegurar que las columnas de unión sean strings
+    # Asegurar tipo string para la unión
     df['SUBPARTIDA'] = df['SUBPARTIDA'].astype(str)
     arancel['SUBPARTIDA'] = arancel['SUBPARTIDA'].astype(str)
 
@@ -31,7 +34,6 @@ try:
     with col1:
         buscar_empresa = st.text_input("Filtrar por Empresa:")
     with col2:
-        # Usamos el nombre de columna correcto: DESCRIPCION_SUBPARTIDA
         buscar_descripcion = st.text_input("Buscar por nombre (ej: Hass, Aguacate):")
 
     df_filtrado = df.copy()
@@ -41,7 +43,6 @@ try:
             df_filtrado['RAZON_SOCIAL_EXPORTADOR'].astype(str).str.contains(buscar_empresa, case=False, na=False)]
 
     if buscar_descripcion:
-        # Filtramos por la columna exacta del CSV
         df_filtrado = df_filtrado[
             df_filtrado['DESCRIPCION_SUBPARTIDA'].astype(str).str.contains(buscar_descripcion, case=False, na=False)]
 
