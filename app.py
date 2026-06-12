@@ -7,8 +7,9 @@ st.set_page_config(page_title="Buscador Comex", layout="wide")
 # Cargamos el archivo que ya tiene todo unido (más rápido y sin errores)
 @st.cache_data
 def cargar_datos():
-    # Usamos sep=',' porque al guardar como CSV en Excel, esa es la norma
-    df = pd.read_csv("datos_finales.csv", encoding='latin-1')
+    # Usamos on_bad_lines='skip' para que ignore filas con errores
+    # Usamos engine='python' para que sea más tolerante a formatos de Excel
+    df = pd.read_csv("datos_finales.csv", encoding='latin-1', on_bad_lines='skip', engine='python')
     return df
 
 
