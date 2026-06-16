@@ -43,7 +43,7 @@ if empresa or descripcion or nit or subpartida or agencia:
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
         # Ejecutar consulta limitada a 200 registros
-        response = query.limit(600).order("id", desc=True).execute()
+        response = query.limit(500).order("id", desc=True).execute()
         data = response.data
 
         if data:
