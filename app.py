@@ -29,11 +29,17 @@ with st.expander("⚙️ Filtros Avanzados"):
     with c3:
         agencia = st.text_input("Agencia de Aduanas:")
 
+# Estado de paginación
+if 'pagina' not in st.session_state:
+    st.session_state.pagina = 0
+
+resultados_por_pagina = 200
+
 # Lógica de búsqueda
 if empresa or descripcion or nit or subpartida or agencia:
     try:
-        # CAMBIO AQUÍ: Ahora consultamos directamente la tabla consolidada
-        query = supabase.table("todo_comex_consolidado").select("*")
+        # Consulta base
+        query = supabase.table("todo_comex_consolidado").select("*", count='exact')
 
         # Aplicar filtros dinámicos
         if empresa: query = query.ilike("RAZON_SOCIAL_EXPORTADOR", f"%{empresa}%")
@@ -42,18 +48,38 @@ if empresa or descripcion or nit or subpartida or agencia:
         if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-        # Ejecutar consulta limitada a 200 registros
-        response = query.limit(200).execute()
+        # Aplicar paginación (rango)
+        inicio = st.session_state.pagina * resultados_por_pagina
+        fin = inicio + resultados_por_pagina - 1
+        query = query.range(inicio, fin).order("id", desc=True)
+
+        response = query.execute()
         data = response.data
 
         if data:
             df = pd.DataFrame(data)
-            st.write(f"Resultados encontrados: {len(df)}")
+            st.write(f"Mostrando resultados: {inicio + 1} a {inicio + len(df)}")
             st.dataframe(df, use_container_width=True)
+
+            # Botones de navegación
+            col_ant, col_sig = st.columns(2)
+            with col_ant:
+                if st.button("⬅️ Anterior") and st.session_state.pagina > 0:
+                    st.session_state.pagina -= 1
+                    st.rerun()
+            with col_sig:
+                if st.button("Siguiente ➡️") and len(data) == resultados_por_pagina:
+                    st.session_state.pagina += 1
+                    st.rerun()
         else:
-            st.warning("No se encontraron resultados con los filtros actuales.")
+            st.warning("No se encontraron más resultados.")
+            if st.session_state.pagina > 0:
+                if st.button("Regresar a la página 1"):
+                    st.session_state.pagina = 0
+                    st.rerun()
 
     except Exception as e:
         st.error(f"Error al consultar la base de datos: {e}")
 else:
     st.info("Escribe en cualquiera de los filtros para buscar.")
+    st.session_state.pagina = 0
