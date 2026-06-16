@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client
+from langchain_openai import ChatOpenAI
 
 # Configuración de la página
 st.set_page_config(page_title="Buscador Comex Web", layout="wide")
@@ -32,7 +33,7 @@ with st.expander("⚙️ Filtros Avanzados"):
 # Lógica de búsqueda
 if empresa or descripcion or nit or subpartida or agencia:
     try:
-        # CAMBIO AQUÍ: Ahora consultamos directamente la tabla consolidada
+        # Consulta base
         query = supabase.table("todo_comex_consolidado").select("*")
 
         # Aplicar filtros dinámicos
@@ -42,14 +43,31 @@ if empresa or descripcion or nit or subpartida or agencia:
         if subpartida: query = query.ilike("SUBPARTIDA", f"%{subpartida}%")
         if agencia: query = query.ilike("RAZON_SOCIAL_DECLARANTE", f"%{agencia}%")
 
-        # Ejecutar consulta limitada a 200 registros
-        response = query.limit(500).order("id", desc=True).execute()
+        # Ejecutar consulta
+        response = query.limit(200).order("id", desc=True).execute()
         data = response.data
 
         if data:
             df = pd.DataFrame(data)
             st.write(f"Resultados encontrados: {len(df)}")
             st.dataframe(df, use_container_width=True)
+
+            # --- BLOQUE DE IA ---
+            st.markdown("---")
+            st.subheader("🤖 Asistente de Análisis de Datos")
+            pregunta_ia = st.text_input(
+                "¿Quieres analizar estos resultados? (ej: ¿Quién es el exportador que más repite aquí?)")
+
+            if pregunta_ia:
+                llm = ChatOpenAI(model="gpt-4o-mini", api_key=st.secrets["OPENAI_API_KEY"])
+                contexto = df.to_string()
+                prompt = f"Basado en estos datos de exportaciones: \n{contexto}\n\nResponde a esta pregunta: {pregunta_ia}"
+
+                with st.spinner("La IA está analizando los datos..."):
+                    respuesta = llm.invoke(prompt)
+                    st.info(respuesta.content)
+            # --------------------
+
         else:
             st.warning("No se encontraron resultados con los filtros actuales.")
 
